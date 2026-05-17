@@ -7,9 +7,7 @@ import (
 	"github.com/creack/pty"
 )
 
-// StartPTY launches a shell attached to a fresh pty and returns the
-// master file plus the cmd (keep cmd so you can cmd.Wait / cmd.Process.Kill
-// on teardown).
+// StartPTY launches a shell attached to a fresh pty and returns the master file plus the cmd.
 func StartPTY() (*os.File, *exec.Cmd, error) {
 	shell := os.Getenv("SHELL")
 	if shell == "" {
