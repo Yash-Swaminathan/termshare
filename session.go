@@ -21,23 +21,22 @@ type Client struct {
 	send chan []byte
 }
 
-// writePump: the single writer for this client's conn.
-//
-//	for b := range c.send {
-//	    c.conn.WriteMessage(websocket.BinaryMessage, b)  // err -> return
-//	}
 func (c *Client) writePump() {
-	// TODO
+	for b := range c.send {
+		c.conn.WriteMessage(websocket.BinaryMessage, b)
+	}
 }
 
-// readPump: read browser -> pty input. Pass `s` so you can write to
-// the pty and unregister on disconnect.
-//
-//	for { _, b, err := c.conn.ReadMessage(); if err != nil { break }
-//	      s.ptyFile.Write(b) }   // skip the Write for read-only viewers
-//	defer: s.unregister <- c
+// readPump forwards WebSocket input to the pty; unregisters on disconnect.
 func (c *Client) readPump(s *Session) {
-	// TODO
+	defer func() { s.unregister <- c }()
+	for {
+		_, b, err := c.conn.ReadMessage()
+		if err != nil {
+			break
+		}
+		s.ptyFile.Write(b)
+	}
 }
 
 // Session ties the pty to its clients.
@@ -51,42 +50,62 @@ type Session struct {
 	// instead of doing everything through the channels above
 }
 
-// NewSession: StartPTY(), build the maps/channels, return *Session.
-// Caller then does: go s.run(); go s.readPTY().
+// NewSession spawns a shell PTY and initializes the hub channels.
+// Caller must run go s.run() and go s.readPTY() before registering clients.
 func NewSession() (*Session, error) {
-	// TODO:
-	//   f, _, err := StartPTY()
-	//   return &Session{ptyFile: f, clients: map[*Client]bool{},
-	//       register: make(chan *Client), unregister: make(chan *Client),
-	//       broadcast: make(chan []byte, 256)}, err
-	panic("TODO: implement NewSession")
+	f, _, err := StartPTY()
+	if err != nil {
+		return nil, err
+	}
+	return &Session{ptyFile: f, clients: map[*Client]bool{},
+		register: make(chan *Client), unregister: make(chan *Client),
+		broadcast: make(chan []byte, 256)}, nil
 }
 
-// run is the hub loop. select over the three channels:
-//
-//	case c := <-s.register:    s.clients[c] = true
-//	case c := <-s.unregister:  delete + close(c.send) + c.conn.Close()
-//	case b := <-s.broadcast:
-//	    for c := range s.clients {
-//	        select {
-//	        case c.send <- b:        // ok
-//	        default:                 // slow client: drop it
-//	            unregister c
-//	        }
-//	    }
+// run is the hub loop: register/unregister clients and fan out pty output.
 func (s *Session) run() {
-	// TODO
+	for {
+		select {
+		case c := <-s.register:
+			s.clients[c] = true
+		case c := <-s.unregister:
+			s.drop(c)
+		case b := <-s.broadcast:
+			for c := range s.clients {
+				select {
+				case c.send <- b:
+				default:
+					// Slow client. Drop inline — sending to
+					// s.unregister here deadlocks, since this
+					// goroutine is its only receiver.
+					s.drop(c)
+				}
+			}
+		}
+	}
 }
 
-// readPTY: the producer. Loop reading the pty, push to broadcast.
-//
-//	buf := make([]byte, 4096)
-//	for {
-//	    n, err := s.ptyFile.Read(buf)
-//	    if err != nil { /* shell exited: tear the session down */ return }
-//	    data := make([]byte, n); copy(data, buf[:n]) // copy! buf is reused
-//	    s.broadcast <- data
-//	}
+// drop removes a client exactly once. Safe to call twice: readPump's
+// deferred unregister can fire after a slow-client drop, and the map
+// check stops a double close(c.send) panic.
+func (s *Session) drop(c *Client) {
+	if _, ok := s.clients[c]; ok {
+		delete(s.clients, c)
+		close(c.send)
+		c.conn.Close()
+	}
+}
+
+// readPTY reads shell output and pushes copies onto broadcast (buf is reused).
 func (s *Session) readPTY() {
-	// TODO
+	buf := make([]byte, 4096)
+	for {
+		n, err := s.ptyFile.Read(buf)
+		if err != nil {
+			return
+		}
+		data := make([]byte, n)
+		copy(data, buf[:n])
+		s.broadcast <- data
+	}
 }

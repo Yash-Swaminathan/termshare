@@ -13,6 +13,14 @@ var addr = flag.String("addr", ":8080", "http service address")
 func main() {
 	flag.Parse()
 
+	s, err := NewSession()
+	if err != nil {
+		log.Fatal("NewSession:", err)
+	}
+	session = s
+	go session.run()
+	go session.readPTY()
+
 	http.Handle("/", http.FileServer(http.Dir("static")))
 
 	// endpoint for the live terminal stream.
@@ -24,9 +32,15 @@ func main() {
 	}
 }
 
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
-}
+var (
+	upgrader = websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool { return true },
+	}
+	// session is the ONE shared terminal. Every browser that hits /ws
+	// becomes a viewer of this same session — that is the "share".
+	// Created once in main(), never per-connection.
+	session *Session
+)
 
 func serveWS(w http.ResponseWriter, req *http.Request) {
 	conn, err := upgrader.Upgrade(w, req, nil)
@@ -34,13 +48,7 @@ func serveWS(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	client := &Client{conn: conn, send: make(chan []byte, 256)}
-	session, err := NewSession()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
 	session.register <- client
 	go client.writePump()
 	go client.readPump(session)
-	return
 }
