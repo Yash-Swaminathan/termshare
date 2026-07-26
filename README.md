@@ -4,6 +4,12 @@ Live-share a terminal over WebSockets to a browser. Run one command, get a
 shareable link, and let someone on another device watch your shell in real time
 (and type, if you let them).
 
+## Demo
+
+![termshare demo](demo/termshare-demo.gif)
+
+<!-- Recording steps and shot list: demo/demo-script.md -->
+
 ## Requirements
 
 - Linux or macOS (or Windows via WSL) — the PTY backend is Unix-only

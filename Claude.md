@@ -56,13 +56,17 @@ The host key is random each run; override with `go run . -host-key <key>`.
 
 ## Before Path B / C
 
-Do these first so demos and an extension have a solid base:
+Status of the pre-demo checklist:
 
-1. Commit `static/index.html` if it is still untracked
-2. Add a real `README.md` (what it is, how to run, Linux/macOS only, no auth)
-3. Fix the product story: either implement host/viewer roles (Path B #1) or stop claiming viewers are read-only
-4. Record a short demo (GIF/MP4) once resize + roles exist — better for Twitter/portfolio than more features
-5. Decide host OS for demos: PTY will not run natively on Windows; use WSL, macOS, or Linux
+1. [x] Commit `static/index.html` — tracked and committed
+2. [x] Real `README.md` — added (what it is, how to run, Unix-only, no auth)
+3. [x] Product story fixed — host/viewer roles + write ACL implemented (Path B #1)
+4. [ ] Record a short demo (GIF/MP4) — shot list ready in `demo/demo-script.md`;
+   README embeds `demo/termshare-demo.gif` once the file is dropped in. This is the
+   only open pre-demo item (manual screen capture).
+5. [x] Host OS for demos: **WSL Ubuntu** (native Windows is unsupported — `pty.Start`
+   returns `unsupported`). Verified end-to-end on WSL: boot, `/s/{id}` 200, bad id
+   404, and host-typed output reaching a viewer over WebSocket.
 
 Rough effort: Path B ~1–2 days (B-lite: roles + resize ≈ half day). Path C VS Code extension ~1–2 days MVP, ~3–5 days solid.
 
