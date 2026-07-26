@@ -25,14 +25,21 @@ termshare/
 
 ```bash
 go run .
-# open http://localhost:8080
+# host  URL (can type): http://localhost:8080/?key=<printed at startup>
+# viewer URL (read-only): http://localhost:8080/
 ```
+
+The host key is random each run; override with `go run . -host-key <key>`.
 
 ## Notes
 
 - PTY support is Linux/macOS only (Windows needs WSL or a remote Unix host)
-- No auth — intended for local/trusted network use
-- Today every connected client can type into the shared PTY (read-only viewers are Path B, not implemented yet)
+- Roles are enforced server-side: only a client that connected with the correct
+  `?key=<hostKey>` is the host and may type. Everyone else is a read-only viewer.
+- The host can grant/revoke write for all viewers at once (the "Allow viewers to
+  type" toggle sends `{"type":"set_acl","viewersWrite":bool}`); server updates
+  each viewer's `canWrite` and pushes a `role` message back.
+- No user auth beyond the host key — intended for local/trusted network use
 - `static/` must stay in the repo — the UI is required to run
 
 ## Before Path B / C

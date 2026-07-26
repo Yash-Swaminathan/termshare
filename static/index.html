@@ -5,38 +5,98 @@
   <title>termshare</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css" />
   <style>
-    html, body { margin: 0; height: 100%; background: #000; }
-    #term { height: 100%; padding: 4px; }
+    html, body { margin: 0; height: 100%; background: #000; color: #ddd;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    body { display: flex; flex-direction: column; }
+    #bar { display: flex; align-items: center; gap: 12px; padding: 6px 10px;
+      background: #111; border-bottom: 1px solid #222; font-size: 13px; }
+    #status { flex: 1; }
+    #status .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+      margin-right: 6px; background: #666; vertical-align: middle; }
+    #status.host .dot { background: #3fb950; }
+    #status.write .dot { background: #d29922; }
+    #toggle { display: none; background: #21262d; color: #ddd; border: 1px solid #30363d;
+      border-radius: 6px; padding: 5px 10px; font: inherit; cursor: pointer; }
+    #toggle:hover { background: #30363d; }
+    #term { flex: 1; padding: 4px; min-height: 0; }
   </style>
 </head>
 <body>
+  <div id="bar">
+    <span id="status"><span class="dot"></span><span id="statusText">connecting...</span></span>
+    <button id="toggle"></button>
+  </div>
   <div id="term"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
   <script>
-    // xterm.js = a terminal emulator in the browser. It turns the raw
-    // ANSI escape bytes from the PTY back into a visible terminal.
     const term = new Terminal({ cursorBlink: true });
     term.open(document.getElementById('term'));
     term.write('connecting...\r\n');
 
+    const statusEl = document.getElementById('status');
+    const statusText = document.getElementById('statusText');
+    const toggle = document.getElementById('toggle');
+
+    // Role state; the server is authoritative.
+    let isHost = false;
+    let canWrite = false;
+    let viewersCanWrite = false;
+
+    const key = new URLSearchParams(location.search).get('key');
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    const ws = new WebSocket(proto + '://' + location.host + '/ws');
+    const ws = new WebSocket(proto + '://' + location.host + '/ws' + (key ? '?key=' + encodeURIComponent(key) : ''));
     ws.binaryType = 'arraybuffer';
 
     ws.onopen  = () => term.write('\r\n[connected]\r\n');
-    ws.onclose = () => term.write('\r\n[disconnected]\r\n');
+    ws.onclose = () => { term.write('\r\n[disconnected]\r\n'); render(); };
 
-    // Shell output -> screen.
     ws.onmessage = (ev) => {
-      const data = typeof ev.data === 'string'
-        ? ev.data
-        : new Uint8Array(ev.data);
-      term.write(data);
+      // Text = JSON control, binary = pty output.
+      if (typeof ev.data === 'string') {
+        handleControl(ev.data);
+        return;
+      }
+      term.write(new Uint8Array(ev.data));
     };
 
-    // Keystrokes -> shared shell.
-    term.onData((d) => ws.send(d));
+    function handleControl(raw) {
+      let msg;
+      try { msg = JSON.parse(raw); } catch (e) { return; }
+      if (msg.type === 'role') {
+        isHost = msg.role === 'host';
+        canWrite = !!msg.canWrite;
+        viewersCanWrite = !!msg.viewersCanWrite;
+        render();
+      }
+    }
+
+    function render() {
+      statusEl.classList.remove('host', 'write');
+      if (isHost) {
+        statusEl.classList.add('host');
+        statusText.textContent = 'host \u00b7 you can type';
+        toggle.style.display = 'inline-block';
+        toggle.textContent = viewersCanWrite ? 'Lock viewers (read-only)' : 'Allow viewers to type';
+      } else {
+        toggle.style.display = 'none';
+        if (canWrite) {
+          statusEl.classList.add('write');
+          statusText.textContent = 'viewer \u00b7 writing enabled';
+        } else {
+          statusText.textContent = 'viewer \u00b7 read-only';
+        }
+      }
+    }
+
+    toggle.addEventListener('click', () => {
+      if (!isHost) return;
+      ws.send(JSON.stringify({ type: 'set_acl', viewersWrite: !viewersCanWrite }));
+    });
+
+    term.onData((d) => {
+      if (canWrite && ws.readyState === WebSocket.OPEN) ws.send(d);
+    });
   </script>
 </body>
 </html>

@@ -1,83 +1,145 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
-	"sync"
+	"sync/atomic"
 
 	"github.com/gorilla/websocket"
 )
 
-// session.go is the hub. One Session owns one pty and the set of
-// browser clients watching it. Model to copy: the gorilla/websocket
-// chat example (hub.go + client.go) — termshare IS that example with
-// the pty master file substituted for "messages users type".
+// outMsg is one queued frame: binary for pty output, text for JSON control.
+type outMsg struct {
+	text bool
+	data []byte
+}
 
-// Client is one connected browser.
+// Client is one connected browser. canWrite is read by readPump and written
+// by the hub, so it is atomic.
 type Client struct {
-	conn *websocket.Conn
-	// send is buffered. Broadcasts push here; writePump is the ONLY
-	// thing that drains it and writes to conn. This is how you obey
-	// gorilla's "one concurrent writer per connection" rule.
-	send chan []byte
+	conn     *websocket.Conn
+	send     chan outMsg
+	isHost   bool
+	canWrite atomic.Bool
+}
+
+// trySend queues a frame without blocking; false means the client is too slow.
+func (c *Client) trySend(m outMsg) bool {
+	select {
+	case c.send <- m:
+		return true
+	default:
+		return false
+	}
+}
+
+func (c *Client) roleMessage(viewersCanWrite bool) outMsg {
+	role := "viewer"
+	if c.isHost {
+		role = "host"
+	}
+	data, _ := json.Marshal(struct {
+		Type            string `json:"type"`
+		Role            string `json:"role"`
+		CanWrite        bool   `json:"canWrite"`
+		ViewersCanWrite bool   `json:"viewersCanWrite"`
+	}{"role", role, c.canWrite.Load(), viewersCanWrite})
+	return outMsg{text: true, data: data}
 }
 
 func (c *Client) writePump() {
-	for b := range c.send {
-		c.conn.WriteMessage(websocket.BinaryMessage, b)
+	for m := range c.send {
+		mt := websocket.BinaryMessage
+		if m.text {
+			mt = websocket.TextMessage
+		}
+		c.conn.WriteMessage(mt, m.data)
 	}
 }
 
-// readPump forwards WebSocket input to the pty; unregisters on disconnect.
 func (c *Client) readPump(s *Session) {
 	defer func() { s.unregister <- c }()
 	for {
-		_, b, err := c.conn.ReadMessage()
+		mt, b, err := c.conn.ReadMessage()
 		if err != nil {
 			break
 		}
-		s.ptyFile.Write(b)
+		if mt == websocket.TextMessage {
+			c.handleControl(s, b)
+			continue
+		}
+		if c.canWrite.Load() {
+			s.ptyFile.Write(b)
+		}
 	}
 }
 
-// Session ties the pty to its clients.
+func (c *Client) handleControl(s *Session, b []byte) {
+	var m struct {
+		Type         string `json:"type"`
+		ViewersWrite bool   `json:"viewersWrite"`
+	}
+	if err := json.Unmarshal(b, &m); err != nil {
+		return
+	}
+	if m.Type == "set_acl" && c.isHost {
+		s.setACL <- m.ViewersWrite
+	}
+}
+
+// Session ties the pty to its clients. hostKey grants write via ?key=; all
+// role state is mutated only in run().
 type Session struct {
 	ptyFile    *os.File
 	clients    map[*Client]bool
 	register   chan *Client
 	unregister chan *Client
-	broadcast  chan []byte // bytes read off the pty land here
-	mu         sync.Mutex  // only if you guard `clients` directly
-	// instead of doing everything through the channels above
+	broadcast  chan []byte
+	setACL     chan bool
+
+	hostKey         string
+	viewersCanWrite bool
 }
 
-// NewSession spawns a shell PTY and initializes the hub channels.
-// Caller must run go s.run() and go s.readPTY() before registering clients.
-func NewSession() (*Session, error) {
+func NewSession(hostKey string) (*Session, error) {
 	f, _, err := StartPTY()
 	if err != nil {
 		return nil, err
 	}
-	return &Session{ptyFile: f, clients: map[*Client]bool{},
-		register: make(chan *Client), unregister: make(chan *Client),
-		broadcast: make(chan []byte, 256)}, nil
+	return &Session{
+		ptyFile:    f,
+		clients:    map[*Client]bool{},
+		register:   make(chan *Client),
+		unregister: make(chan *Client),
+		broadcast:  make(chan []byte, 256),
+		setACL:     make(chan bool),
+		hostKey:    hostKey,
+	}, nil
 }
 
-// run is the hub loop: register/unregister clients and fan out pty output.
 func (s *Session) run() {
 	for {
 		select {
 		case c := <-s.register:
 			s.clients[c] = true
+			if !c.isHost {
+				c.canWrite.Store(s.viewersCanWrite)
+			}
+			c.trySend(c.roleMessage(s.viewersCanWrite))
 		case c := <-s.unregister:
 			s.drop(c)
+		case vw := <-s.setACL:
+			s.viewersCanWrite = vw
+			for c := range s.clients {
+				if !c.isHost {
+					c.canWrite.Store(vw)
+				}
+				c.trySend(c.roleMessage(vw))
+			}
 		case b := <-s.broadcast:
 			for c := range s.clients {
-				select {
-				case c.send <- b:
-				default:
-					// Slow client. Drop inline — sending to
-					// s.unregister here deadlocks, since this
-					// goroutine is its only receiver.
+				// Drop slow clients inline; unregister would deadlock here.
+				if !c.trySend(outMsg{data: b}) {
 					s.drop(c)
 				}
 			}
@@ -85,9 +147,7 @@ func (s *Session) run() {
 	}
 }
 
-// drop removes a client exactly once. Safe to call twice: readPump's
-// deferred unregister can fire after a slow-client drop, and the map
-// check stops a double close(c.send) panic.
+// drop removes a client exactly once (safe to call twice).
 func (s *Session) drop(c *Client) {
 	if _, ok := s.clients[c]; ok {
 		delete(s.clients, c)
@@ -96,7 +156,6 @@ func (s *Session) drop(c *Client) {
 	}
 }
 
-// readPTY reads shell output and pushes copies onto broadcast (buf is reused).
 func (s *Session) readPTY() {
 	buf := make([]byte, 4096)
 	for {
