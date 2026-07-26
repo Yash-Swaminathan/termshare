@@ -13,7 +13,8 @@ A lightweight terminal live share tool written in Go. Spawn a session and share 
 
 ```
 termshare/
-├── main.go          # entry point, HTTP + WebSocket server
+├── main.go          # entry point, HTTP + WebSocket server, session URL printing
+├── hub.go           # session registry (id -> Session)
 ├── session.go       # session/room management
 ├── pty.go           # PTY spawning and I/O piping
 ├── static/
@@ -25,17 +26,28 @@ termshare/
 
 ```bash
 go run .
-# host  URL (can type): http://localhost:8080/?key=<printed at startup>
-# viewer URL (read-only): http://localhost:8080/
+# startup prints a session id plus links, e.g.:
+#   local viewer  http://localhost:8080/s/<id>
+#   local host    http://localhost:8080/s/<id>?key=<hostKey>
+#   lan   viewer  http://<lan-ip>:8080/s/<id>          (shown when a LAN IP is found)
+#   lan   host    http://<lan-ip>:8080/s/<id>?key=<hostKey>
 ```
+
+Sessions live at `/s/{id}`. The `?key=<hostKey>` grants host (write) access;
+without it you are a read-only viewer. For a local demo, open the `local host`
+link in one window and the `local viewer` link in another. To share, send the
+`lan viewer` link to someone on the same network.
 
 The host key is random each run; override with `go run . -host-key <key>`.
 
 ## Notes
 
 - PTY support is Linux/macOS only (Windows needs WSL or a remote Unix host)
-- Roles are enforced server-side: only a client that connected with the correct
-  `?key=<hostKey>` is the host and may type. Everyone else is a read-only viewer.
+- Sessions are keyed by a public random id and resolved through the `Hub`
+  (`hub.go`); one process creates exactly one session at boot. Unknown ids 404.
+- Roles are enforced server-side: only a client that connected to `/s/{id}/ws`
+  with the correct `?key=<hostKey>` is the host and may type. Everyone else is a
+  read-only viewer.
 - The host can grant/revoke write for all viewers at once (the "Allow viewers to
   type" toggle sends `{"type":"set_acl","viewersWrite":bool}`); server updates
   each viewer's `canWrite` and pushes a `role` message back.

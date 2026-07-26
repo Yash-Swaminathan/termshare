@@ -5,7 +5,9 @@ import (
 	"encoding/hex"
 	"flag"
 	"log"
+	"net"
 	"net/http"
+	"strings"
 
 	"github.com/gorilla/websocket"
 )
@@ -23,23 +25,67 @@ func main() {
 		key = randomKey()
 	}
 
-	s, err := NewSession(key)
+	hub = NewHub()
+	s, err := hub.Create(key)
 	if err != nil {
-		log.Fatal("NewSession:", err)
+		log.Fatal("Create session:", err)
 	}
-	session = s
-	go session.run()
-	go session.readPTY()
-
-	http.Handle("/", http.FileServer(http.Dir("static")))
-	http.HandleFunc("/ws", serveWS)
+	go s.run()
+	go s.readPTY()
 
 	log.Printf("termshare listening on %s", *addr)
-	log.Printf("host  (can type): http://localhost%s/?key=%s", *addr, key)
-	log.Printf("viewer (read-only): http://localhost%s/", *addr)
-	if err := http.ListenAndServe(*addr, nil); err != nil {
+	logShareURLs(*addr, s.id, key)
+	if err := http.ListenAndServe(*addr, newMux()); err != nil {
 		log.Fatal("ListenAndServe:", err)
 	}
+}
+
+// newMux requires hub to be initialized before the handler serves requests.
+func newMux() *http.ServeMux {
+	mux := http.NewServeMux()
+	mux.Handle("/", http.FileServer(http.Dir("static")))
+	mux.HandleFunc("/s/{id}", serveSessionPage)
+	mux.HandleFunc("/s/{id}/ws", serveWS)
+	return mux
+}
+
+func logShareURLs(addr, id, key string) {
+	port := portOf(addr)
+	log.Printf("session  %s", id)
+	printPair := func(label, host string) {
+		base := "http://" + host + ":" + port + "/s/" + id
+		log.Printf("%s viewer  %s", label, base)
+		log.Printf("%s host    %s?key=%s", label, base, key)
+	}
+	printPair("local", "localhost")
+	if ip := detectLANIP(); ip != "" {
+		printPair("lan  ", ip)
+	}
+}
+
+func portOf(addr string) string {
+	if _, port, err := net.SplitHostPort(addr); err == nil && port != "" {
+		return port
+	}
+	return "8080"
+}
+
+func detectLANIP() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return ""
+	}
+	for _, a := range addrs {
+		ipNet, ok := a.(*net.IPNet)
+		if !ok || ipNet.IP.IsLoopback() {
+			continue
+		}
+		ip4 := ipNet.IP.To4()
+		if ip4 != nil {
+			return ip4.String()
+		}
+	}
+	return ""
 }
 
 func randomKey() string {
@@ -54,20 +100,33 @@ var (
 	upgrader = websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool { return true },
 	}
-	// session is the one shared terminal every /ws client views.
-	session *Session
+	hub *Hub
 )
 
+func serveSessionPage(w http.ResponseWriter, req *http.Request) {
+	id := strings.TrimSpace(req.PathValue("id"))
+	if _, ok := hub.Get(id); !ok {
+		http.NotFound(w, req)
+		return
+	}
+	http.ServeFile(w, req, "static/index.html")
+}
+
 func serveWS(w http.ResponseWriter, req *http.Request) {
+	id := strings.TrimSpace(req.PathValue("id"))
+	s, ok := hub.Get(id)
+	if !ok {
+		http.NotFound(w, req)
+		return
+	}
 	conn, err := upgrader.Upgrade(w, req, nil)
 	if err != nil {
 		return
 	}
-	// Host access is granted by a matching ?key=; viewers get canWrite at register.
-	isHost := session.hostKey != "" && req.URL.Query().Get("key") == session.hostKey
+	isHost := s.hostKey != "" && req.URL.Query().Get("key") == s.hostKey
 	client := &Client{conn: conn, send: make(chan outMsg, 256), isHost: isHost}
 	client.canWrite.Store(isHost)
-	session.register <- client
+	s.register <- client
 	go client.writePump()
-	go client.readPump(session)
+	go client.readPump(s)
 }

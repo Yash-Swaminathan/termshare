@@ -99,6 +99,7 @@ func (c *Client) handleControl(s *Session, b []byte) {
 // Session ties the pty to its clients. hostKey grants write via ?key=; all
 // role state is mutated only in run().
 type Session struct {
+	id         string
 	ptyFile    *os.File
 	clients    map[*Client]bool
 	register   chan *Client
@@ -122,12 +123,13 @@ func (s *Session) resize(cols, rows uint16) {
 	s.resizePTY(cols, rows)
 }
 
-func NewSession(hostKey string) (*Session, error) {
+func NewSession(id, hostKey string) (*Session, error) {
 	f, _, err := StartPTY()
 	if err != nil {
 		return nil, err
 	}
 	s := &Session{
+		id:         id,
 		ptyFile:    f,
 		clients:    map[*Client]bool{},
 		register:   make(chan *Client),

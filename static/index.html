@@ -48,21 +48,31 @@
     let viewersCanWrite = false;
 
     const key = new URLSearchParams(location.search).get('key');
+    const sessionMatch = location.pathname.match(/^\/s\/([^/]+)/);
+    const sessionId = sessionMatch ? sessionMatch[1] : null;
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    const ws = new WebSocket(proto + '://' + location.host + '/ws' + (key ? '?key=' + encodeURIComponent(key) : ''));
-    ws.binaryType = 'arraybuffer';
 
-    ws.onopen  = () => term.write('\r\n[connected]\r\n');
-    ws.onclose = () => { term.write('\r\n[disconnected]\r\n'); render(); };
+    let ws = null;
+    if (!sessionId) {
+      statusText.textContent = 'no session \u00b7 open the /s/{id} link printed by termshare';
+      term.write('\r\nNo session in this URL.\r\n');
+      term.write('Start termshare and open the /s/{id} link it prints.\r\n');
+    } else {
+      ws = new WebSocket(proto + '://' + location.host + '/s/' + encodeURIComponent(sessionId) + '/ws' + (key ? '?key=' + encodeURIComponent(key) : ''));
+      ws.binaryType = 'arraybuffer';
 
-    ws.onmessage = (ev) => {
-      // Text = JSON control, binary = pty output.
-      if (typeof ev.data === 'string') {
-        handleControl(ev.data);
-        return;
-      }
-      term.write(new Uint8Array(ev.data));
-    };
+      ws.onopen  = () => term.write('\r\n[connected]\r\n');
+      ws.onclose = () => { term.write('\r\n[disconnected]\r\n'); render(); };
+
+      ws.onmessage = (ev) => {
+        // Text = JSON control, binary = pty output.
+        if (typeof ev.data === 'string') {
+          handleControl(ev.data);
+          return;
+        }
+        term.write(new Uint8Array(ev.data));
+      };
+    }
 
     function handleControl(raw) {
       let msg;
@@ -95,16 +105,16 @@
     }
 
     toggle.addEventListener('click', () => {
-      if (!isHost) return;
+      if (!isHost || !ws) return;
       ws.send(JSON.stringify({ type: 'set_acl', viewersWrite: !viewersCanWrite }));
     });
 
     term.onData((d) => {
-      if (canWrite && ws.readyState === WebSocket.OPEN) ws.send(d);
+      if (canWrite && ws && ws.readyState === WebSocket.OPEN) ws.send(d);
     });
 
     function sendResize() {
-      if (!isHost || ws.readyState !== WebSocket.OPEN) return;
+      if (!isHost || !ws || ws.readyState !== WebSocket.OPEN) return;
       ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
     }
 
