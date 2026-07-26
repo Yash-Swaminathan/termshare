@@ -32,6 +32,7 @@ func main() {
 	}
 	go s.run()
 	go s.readPTY()
+	go s.waitShell()
 
 	log.Printf("termshare listening on %s", *addr)
 	logShareURLs(*addr, s.id, key)
@@ -126,7 +127,10 @@ func serveWS(w http.ResponseWriter, req *http.Request) {
 	isHost := s.hostKey != "" && req.URL.Query().Get("key") == s.hostKey
 	client := &Client{conn: conn, send: make(chan outMsg, 256), isHost: isHost}
 	client.canWrite.Store(isHost)
-	s.register <- client
+	if !s.offer(client) {
+		conn.Close()
+		return
+	}
 	go client.writePump()
 	go client.readPump(s)
 }

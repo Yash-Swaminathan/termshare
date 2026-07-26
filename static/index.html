@@ -83,6 +83,10 @@
         viewersCanWrite = !!msg.viewersCanWrite;
         render();
         sendResize();
+      } else if (msg.type === 'exit') {
+        canWrite = false;
+        statusText.textContent = 'session ended';
+        term.write('\r\n[session ended]\r\n');
       }
     }
 

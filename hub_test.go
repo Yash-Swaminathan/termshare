@@ -32,3 +32,18 @@ func TestHubGetUnknownIDMisses(t *testing.T) {
 		t.Fatal("Get should miss for an unknown id")
 	}
 }
+
+func TestHubDeleteRemovesSession(t *testing.T) {
+	// arrange
+	h := NewHub()
+	h.put(&Session{id: "abc123"})
+
+	// act
+	h.delete("abc123")
+	_, ok := h.Get("abc123")
+
+	// assert
+	if ok {
+		t.Fatal("delete should remove the session")
+	}
+}

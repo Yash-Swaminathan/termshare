@@ -18,6 +18,7 @@ func (h *Hub) Create(hostKey string) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
+	s.remove = func() { h.delete(s.id) }
 	h.put(s)
 	return s, nil
 }
@@ -34,4 +35,10 @@ func (h *Hub) Get(id string) (*Session, bool) {
 	defer h.mu.Unlock()
 	s, ok := h.sessions[id]
 	return s, ok
+}
+
+func (h *Hub) delete(id string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	delete(h.sessions, id)
 }

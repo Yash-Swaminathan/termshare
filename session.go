@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
+	"sync"
 	"sync/atomic"
 
 	"github.com/gorilla/websocket"
@@ -31,6 +33,14 @@ func (c *Client) trySend(m outMsg) bool {
 	default:
 		return false
 	}
+}
+
+// exitMessage tells clients the shared shell has ended.
+func exitMessage() outMsg {
+	data, _ := json.Marshal(struct {
+		Type string `json:"type"`
+	}{"exit"})
+	return outMsg{text: true, data: data}
 }
 
 func (c *Client) roleMessage(viewersCanWrite bool) outMsg {
@@ -101,14 +111,20 @@ func (c *Client) handleControl(s *Session, b []byte) {
 type Session struct {
 	id         string
 	ptyFile    *os.File
+	cmd        *exec.Cmd
 	clients    map[*Client]bool
 	register   chan *Client
 	unregister chan *Client
 	broadcast  chan []byte
 	setACL     chan bool
+	done       chan struct{}
+	doneOnce   sync.Once
 
 	hostKey         string
 	viewersCanWrite bool
+
+	// remove unregisters this session from the hub during shutdown.
+	remove func()
 
 	// resizePTY applies a new pty size; swappable in tests to avoid a real pty.
 	resizePTY func(cols, rows uint16) error
@@ -124,18 +140,20 @@ func (s *Session) resize(cols, rows uint16) {
 }
 
 func NewSession(id, hostKey string) (*Session, error) {
-	f, _, err := StartPTY()
+	f, cmd, err := StartPTY()
 	if err != nil {
 		return nil, err
 	}
 	s := &Session{
 		id:         id,
 		ptyFile:    f,
+		cmd:        cmd,
 		clients:    map[*Client]bool{},
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
 		broadcast:  make(chan []byte, 256),
 		setACL:     make(chan bool),
+		done:       make(chan struct{}),
 		hostKey:    hostKey,
 	}
 	s.resizePTY = func(cols, rows uint16) error {
@@ -170,7 +188,34 @@ func (s *Session) run() {
 					s.drop(c)
 				}
 			}
+		case <-s.done:
+			s.shutdown()
+			return
 		}
+	}
+}
+
+// offer hands a client to run(), or reports false if the session has ended.
+func (s *Session) offer(c *Client) bool {
+	select {
+	case s.register <- c:
+		return true
+	case <-s.done:
+		return false
+	}
+}
+
+// shutdown notifies clients the shell exited, drops them, and unregisters.
+func (s *Session) shutdown() {
+	msg := exitMessage()
+	for c := range s.clients {
+		c.trySend(msg)
+	}
+	for c := range s.clients {
+		s.drop(c)
+	}
+	if s.remove != nil {
+		s.remove()
 	}
 }
 
@@ -179,7 +224,9 @@ func (s *Session) drop(c *Client) {
 	if _, ok := s.clients[c]; ok {
 		delete(s.clients, c)
 		close(c.send)
-		c.conn.Close()
+		if c.conn != nil {
+			c.conn.Close()
+		}
 	}
 }
 
@@ -188,10 +235,23 @@ func (s *Session) readPTY() {
 	for {
 		n, err := s.ptyFile.Read(buf)
 		if err != nil {
+			s.signalDone()
 			return
 		}
 		data := make([]byte, n)
 		copy(data, buf[:n])
 		s.broadcast <- data
 	}
+}
+
+// waitShell reaps the shell process, then closes the pty to unblock readPTY.
+func (s *Session) waitShell() {
+	s.cmd.Wait()
+	s.ptyFile.Close()
+	s.signalDone()
+}
+
+// signalDone closes done exactly once so run() shuts the session down.
+func (s *Session) signalDone() {
+	s.doneOnce.Do(func() { close(s.done) })
 }

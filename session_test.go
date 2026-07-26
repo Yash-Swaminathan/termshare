@@ -136,3 +136,60 @@ func TestHandleControlResizeZeroRejected(t *testing.T) {
 		t.Fatal("zero cols/rows must be rejected")
 	}
 }
+
+func TestExitMessage(t *testing.T) {
+	// act
+	msg := exitMessage()
+	var got map[string]any
+	json.Unmarshal(msg.data, &got)
+
+	// assert
+	if !msg.text {
+		t.Fatal("exit frame must be a text message")
+	}
+	if got["type"] != "exit" {
+		t.Fatalf("want type=exit, got %v", got)
+	}
+}
+
+func TestSessionShutdownNotifiesAndDrops(t *testing.T) {
+	// arrange
+	removed := false
+	s := &Session{clients: map[*Client]bool{}, remove: func() { removed = true }}
+	c := &Client{send: make(chan outMsg, 1)}
+	s.clients[c] = true
+
+	// act
+	s.shutdown()
+
+	// assert
+	msg := <-c.send
+	var got map[string]any
+	json.Unmarshal(msg.data, &got)
+	if got["type"] != "exit" {
+		t.Fatalf("want exit frame, got %v", got)
+	}
+	if _, ok := <-c.send; ok {
+		t.Fatal("client send channel should be closed after shutdown")
+	}
+	if len(s.clients) != 0 {
+		t.Fatal("clients should be dropped on shutdown")
+	}
+	if !removed {
+		t.Fatal("shutdown should unregister the session")
+	}
+}
+
+func TestOfferRejectsAfterDone(t *testing.T) {
+	// arrange
+	s := &Session{register: make(chan *Client), done: make(chan struct{})}
+	close(s.done)
+
+	// act
+	ok := s.offer(&Client{})
+
+	// assert
+	if ok {
+		t.Fatal("offer must reject after the session has ended")
+	}
+}

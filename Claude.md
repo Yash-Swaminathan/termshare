@@ -77,7 +77,7 @@ Make the core tool demo-worthy and match the “live share” story:
 1. **Host vs viewer roles** — first client (or token) can write; others read-only unless granted write
 2. **Terminal resize** — xterm `onResize` / FitAddon → `pty.Setsize` so layout is not broken
 3. **Shareable session URL** — e.g. `/s/{id}` and multi-session support
-4. **Shell exit cleanup** — notify clients and tear down cleanly when the shell dies
+4. **Shell exit cleanup** (done) — notify clients and tear down cleanly when the shell dies
 5. **UI chrome** — viewer count + copy-link button (shows up well in screenshots)
 
 Skip for now unless the project grows: auth/OAuth, public Docker deploy, recording/replay, Windows ConPTY.
