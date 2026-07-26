@@ -193,3 +193,52 @@ func TestOfferRejectsAfterDone(t *testing.T) {
 		t.Fatal("offer must reject after the session has ended")
 	}
 }
+
+func TestViewerCountExcludesHost(t *testing.T) {
+	// arrange
+	s := &Session{clients: map[*Client]bool{}}
+	s.clients[&Client{isHost: true}] = true
+	s.clients[&Client{}] = true
+	s.clients[&Client{}] = true
+
+	// act
+	n := s.viewerCount()
+
+	// assert
+	if n != 2 {
+		t.Fatalf("want 2 viewers, got %d", n)
+	}
+}
+
+func TestCountMessage(t *testing.T) {
+	// act
+	msg := countMessage(3)
+	var got map[string]any
+	json.Unmarshal(msg.data, &got)
+
+	// assert
+	if !msg.text {
+		t.Fatal("count frame must be a text message")
+	}
+	if got["type"] != "count" || got["viewers"] != float64(3) {
+		t.Fatalf("want count/viewers=3, got %v", got)
+	}
+}
+
+func TestBroadcastCountNotifiesClients(t *testing.T) {
+	// arrange
+	s := &Session{clients: map[*Client]bool{}}
+	c := &Client{send: make(chan outMsg, 1)}
+	s.clients[c] = true
+
+	// act
+	s.broadcastCount()
+
+	// assert
+	msg := <-c.send
+	var got map[string]any
+	json.Unmarshal(msg.data, &got)
+	if got["type"] != "count" {
+		t.Fatalf("want count frame, got %v", got)
+	}
+}

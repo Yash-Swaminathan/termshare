@@ -43,6 +43,15 @@ func exitMessage() outMsg {
 	return outMsg{text: true, data: data}
 }
 
+// countMessage reports how many viewers are watching.
+func countMessage(n int) outMsg {
+	data, _ := json.Marshal(struct {
+		Type    string `json:"type"`
+		Viewers int    `json:"viewers"`
+	}{"count", n})
+	return outMsg{text: true, data: data}
+}
+
 func (c *Client) roleMessage(viewersCanWrite bool) outMsg {
 	role := "viewer"
 	if c.isHost {
@@ -171,8 +180,10 @@ func (s *Session) run() {
 				c.canWrite.Store(s.viewersCanWrite)
 			}
 			c.trySend(c.roleMessage(s.viewersCanWrite))
+			s.broadcastCount()
 		case c := <-s.unregister:
 			s.drop(c)
+			s.broadcastCount()
 		case vw := <-s.setACL:
 			s.viewersCanWrite = vw
 			for c := range s.clients {
@@ -202,6 +213,25 @@ func (s *Session) offer(c *Client) bool {
 		return true
 	case <-s.done:
 		return false
+	}
+}
+
+// viewerCount is the number of connected non-host clients.
+func (s *Session) viewerCount() int {
+	n := 0
+	for c := range s.clients {
+		if !c.isHost {
+			n++
+		}
+	}
+	return n
+}
+
+// broadcastCount pushes the current viewer count to every client.
+func (s *Session) broadcastCount() {
+	msg := countMessage(s.viewerCount())
+	for c := range s.clients {
+		c.trySend(msg)
 	}
 }
 

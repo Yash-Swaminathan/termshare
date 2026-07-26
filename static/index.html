@@ -15,15 +15,19 @@
       margin-right: 6px; background: #666; vertical-align: middle; }
     #status.host .dot { background: #3fb950; }
     #status.write .dot { background: #d29922; }
-    #toggle { display: none; background: #21262d; color: #ddd; border: 1px solid #30363d;
+    #viewers { color: #8b949e; }
+    #toggle, #copy { background: #21262d; color: #ddd; border: 1px solid #30363d;
       border-radius: 6px; padding: 5px 10px; font: inherit; cursor: pointer; }
-    #toggle:hover { background: #30363d; }
+    #toggle { display: none; }
+    #toggle:hover, #copy:hover { background: #30363d; }
     #term { flex: 1; padding: 4px; min-height: 0; }
   </style>
 </head>
 <body>
   <div id="bar">
     <span id="status"><span class="dot"></span><span id="statusText">connecting...</span></span>
+    <span id="viewers"></span>
+    <button id="copy">Copy link</button>
     <button id="toggle"></button>
   </div>
   <div id="term"></div>
@@ -40,6 +44,8 @@
 
     const statusEl = document.getElementById('status');
     const statusText = document.getElementById('statusText');
+    const viewersEl = document.getElementById('viewers');
+    const copy = document.getElementById('copy');
     const toggle = document.getElementById('toggle');
 
     // Role state; the server is authoritative.
@@ -87,6 +93,9 @@
         canWrite = false;
         statusText.textContent = 'session ended';
         term.write('\r\n[session ended]\r\n');
+      } else if (msg.type === 'count') {
+        const n = msg.viewers | 0;
+        viewersEl.textContent = n === 1 ? '1 viewer' : n + ' viewers';
       }
     }
 
@@ -112,6 +121,17 @@
       if (!isHost || !ws) return;
       ws.send(JSON.stringify({ type: 'set_acl', viewersWrite: !viewersCanWrite }));
     });
+
+    if (sessionId) {
+      copy.addEventListener('click', async () => {
+        // Share the viewer link only; never leak the host key.
+        await navigator.clipboard.writeText(location.origin + '/s/' + sessionId);
+        copy.textContent = 'Copied!';
+        setTimeout(() => { copy.textContent = 'Copy link'; }, 1200);
+      });
+    } else {
+      copy.style.display = 'none';
+    }
 
     term.onData((d) => {
       if (canWrite && ws && ws.readyState === WebSocket.OPEN) ws.send(d);

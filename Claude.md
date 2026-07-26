@@ -78,7 +78,7 @@ Make the core tool demo-worthy and match the “live share” story:
 2. **Terminal resize** — xterm `onResize` / FitAddon → `pty.Setsize` so layout is not broken
 3. **Shareable session URL** — e.g. `/s/{id}` and multi-session support
 4. **Shell exit cleanup** (done) — notify clients and tear down cleanly when the shell dies
-5. **UI chrome** — viewer count + copy-link button (shows up well in screenshots)
+5. **UI chrome** (done) — viewer count + copy-link button (shows up well in screenshots)
 
 Skip for now unless the project grows: auth/OAuth, public Docker deploy, recording/replay, Windows ConPTY.
 
