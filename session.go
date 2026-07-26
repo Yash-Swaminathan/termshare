@@ -78,12 +78,21 @@ func (c *Client) handleControl(s *Session, b []byte) {
 	var m struct {
 		Type         string `json:"type"`
 		ViewersWrite bool   `json:"viewersWrite"`
+		Cols         uint16 `json:"cols"`
+		Rows         uint16 `json:"rows"`
 	}
 	if err := json.Unmarshal(b, &m); err != nil {
 		return
 	}
-	if m.Type == "set_acl" && c.isHost {
-		s.setACL <- m.ViewersWrite
+	switch m.Type {
+	case "set_acl":
+		if c.isHost {
+			s.setACL <- m.ViewersWrite
+		}
+	case "resize":
+		if c.isHost {
+			s.resize(m.Cols, m.Rows)
+		}
 	}
 }
 
@@ -99,6 +108,18 @@ type Session struct {
 
 	hostKey         string
 	viewersCanWrite bool
+
+	// resizePTY applies a new pty size; swappable in tests to avoid a real pty.
+	resizePTY func(cols, rows uint16) error
+}
+
+// resize validates and applies a host-requested pty size.
+func (s *Session) resize(cols, rows uint16) {
+	const maxDim = 1000
+	if cols == 0 || rows == 0 || cols > maxDim || rows > maxDim {
+		return
+	}
+	s.resizePTY(cols, rows)
 }
 
 func NewSession(hostKey string) (*Session, error) {
@@ -106,7 +127,7 @@ func NewSession(hostKey string) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Session{
+	s := &Session{
 		ptyFile:    f,
 		clients:    map[*Client]bool{},
 		register:   make(chan *Client),
@@ -114,7 +135,11 @@ func NewSession(hostKey string) (*Session, error) {
 		broadcast:  make(chan []byte, 256),
 		setACL:     make(chan bool),
 		hostKey:    hostKey,
-	}, nil
+	}
+	s.resizePTY = func(cols, rows uint16) error {
+		return SetPTYSize(s.ptyFile, cols, rows)
+	}
+	return s, nil
 }
 
 func (s *Session) run() {

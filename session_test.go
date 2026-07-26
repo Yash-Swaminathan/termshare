@@ -82,3 +82,57 @@ func TestHandleControlViewerIgnored(t *testing.T) {
 	default:
 	}
 }
+
+func TestHandleControlHostResize(t *testing.T) {
+	// arrange
+	var gotCols, gotRows uint16
+	s := &Session{resizePTY: func(cols, rows uint16) error {
+		gotCols, gotRows = cols, rows
+		return nil
+	}}
+	host := &Client{isHost: true}
+
+	// act
+	host.handleControl(s, []byte(`{"type":"resize","cols":120,"rows":40}`))
+
+	// assert
+	if gotCols != 120 || gotRows != 40 {
+		t.Fatalf("want 120x40, got %dx%d", gotCols, gotRows)
+	}
+}
+
+func TestHandleControlViewerResizeIgnored(t *testing.T) {
+	// arrange
+	called := false
+	s := &Session{resizePTY: func(cols, rows uint16) error {
+		called = true
+		return nil
+	}}
+	viewer := &Client{isHost: false}
+
+	// act
+	viewer.handleControl(s, []byte(`{"type":"resize","cols":120,"rows":40}`))
+
+	// assert
+	if called {
+		t.Fatal("viewer resize must be ignored")
+	}
+}
+
+func TestHandleControlResizeZeroRejected(t *testing.T) {
+	// arrange
+	called := false
+	s := &Session{resizePTY: func(cols, rows uint16) error {
+		called = true
+		return nil
+	}}
+	host := &Client{isHost: true}
+
+	// act
+	host.handleControl(s, []byte(`{"type":"resize","cols":0,"rows":40}`))
+
+	// assert
+	if called {
+		t.Fatal("zero cols/rows must be rejected")
+	}
+}

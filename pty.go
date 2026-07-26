@@ -20,3 +20,8 @@ func StartPTY() (*os.File, *exec.Cmd, error) {
 	}
 	return f, cmd, nil
 }
+
+// SetPTYSize resizes the pty so the shell reflows to the client window.
+func SetPTYSize(f *os.File, cols, rows uint16) error {
+	return pty.Setsize(f, &pty.Winsize{Cols: cols, Rows: rows})
+}
