@@ -5,6 +5,9 @@ let session: ShareSession | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
   session = new ShareSession();
+  session.onEnded = () => {
+    vscode.window.showInformationMessage("termshare: share ended (the termshare process exited).");
+  };
 
   context.subscriptions.push(
     vscode.commands.registerCommand("termshare.startShare", startShare),
@@ -30,15 +33,7 @@ async function startShare(): Promise<void> {
 
     await vscode.env.clipboard.writeText(urls.viewer);
     await vscode.env.openExternal(vscode.Uri.parse(urls.host));
-
-    const openHost = "Open host";
-    const choice = await vscode.window.showInformationMessage(
-      "termshare: viewer link copied to clipboard.",
-      openHost
-    );
-    if (choice === openHost) {
-      await vscode.env.openExternal(vscode.Uri.parse(urls.host));
-    }
+    vscode.window.showInformationMessage("termshare: sharing started — viewer link copied to clipboard.");
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     vscode.window.showErrorMessage(`termshare: failed to start share. ${message}`);

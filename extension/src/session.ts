@@ -9,6 +9,10 @@ export class ShareSession {
   private child?: ChildProcess;
   private urls?: ShareURLs;
 
+  // Called when the termshare process exits on its own (e.g. the shared
+  // shell ended), as opposed to stop() being invoked.
+  onEnded?: () => void;
+
   isRunning(): boolean {
     return this.child !== undefined;
   }
@@ -37,6 +41,13 @@ export class ShareSession {
     try {
       const urls = await this.readFirstJSON(child, () => stderr);
       this.urls = urls;
+      child.once("exit", () => {
+        if (this.child === child) {
+          this.child = undefined;
+          this.urls = undefined;
+          this.onEnded?.();
+        }
+      });
       return urls;
     } catch (err) {
       this.forceKill();
