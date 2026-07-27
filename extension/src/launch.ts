@@ -1,6 +1,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+export type LaunchMode = "bundled" | "path" | "wsl";
+
 export interface SpawnPlan {
   command: string;
   args: string[];
@@ -9,8 +11,12 @@ export interface SpawnPlan {
 
 export interface ResolveOptions {
   platform: NodeJS.Platform;
+  arch: string;
+  launchMode: LaunchMode;
   pathSetting: string;
-  workspaceRoot?: string;
+  binRoot: string;
+  addr?: string;
+  hostKey?: string;
   extraArgs?: string[];
 }
 
@@ -25,21 +31,70 @@ export function toWSLPath(winPath: string): string {
   return `/mnt/${drive}/${rest}`;
 }
 
-export function resolveSpawn(opts: ResolveOptions): SpawnPlan {
-  const { platform, pathSetting, workspaceRoot, extraArgs = [] } = opts;
-  const setting = pathSetting.trim();
+// platformDir maps the host to the bundled binary folder name. Windows always
+// runs the linux binary under WSL, so the caller passes linux-amd64 directly.
+export function platformDir(platform: NodeJS.Platform, arch: string): string {
+  const os = platform === "darwin" ? "darwin" : "linux";
+  const cpu = arch === "arm64" ? "arm64" : "amd64";
+  return `${os}-${cpu}`;
+}
 
-  if (platform === "win32") {
-    let bin = setting;
-    if (bin === "") {
-      const bundled = workspaceRoot
-        ? path.join(workspaceRoot, "dist", "termshare-linux-amd64")
-        : "";
-      bin = bundled && fs.existsSync(bundled) ? toWSLPath(bundled) : "termshare";
-    }
-    return { command: "wsl", args: ["-e", bin, "-print-json", ...extraArgs], cwd: workspaceRoot };
+function bundledBin(binRoot: string, dir: string): string {
+  return path.join(binRoot, dir, "termshare");
+}
+
+function requireFile(p: string): void {
+  if (!fs.existsSync(p)) {
+    throw new Error(
+      `termshare binary not found at ${p}. Build the bundled binaries with scripts/build-extension-bins.sh, or set termshare.path / termshare.launchMode.`
+    );
   }
+}
 
-  const bin = setting === "" ? "termshare" : setting;
-  return { command: bin, args: ["-print-json", ...extraArgs], cwd: workspaceRoot };
+function runArgs(opts: ResolveOptions): string[] {
+  const args = ["-print-json"];
+  if (opts.addr && opts.addr.trim() !== "") {
+    args.push("-addr", opts.addr.trim());
+  }
+  if (opts.hostKey && opts.hostKey.trim() !== "") {
+    args.push("-host-key", opts.hostKey.trim());
+  }
+  return [...args, ...(opts.extraArgs ?? [])];
+}
+
+export function resolveSpawn(opts: ResolveOptions): SpawnPlan {
+  const args = runArgs(opts);
+  const onWindows = opts.platform === "win32";
+  const setting = opts.pathSetting.trim();
+
+  switch (opts.launchMode) {
+    case "path": {
+      const bin = setting === "" ? "termshare" : setting;
+      if (onWindows) {
+        return { command: "wsl", args: ["-e", toWSLPath(bin), ...args] };
+      }
+      return { command: bin, args };
+    }
+
+    case "wsl": {
+      if (setting !== "") {
+        return { command: "wsl", args: ["-e", toWSLPath(setting), ...args] };
+      }
+      const bin = bundledBin(opts.binRoot, "linux-amd64");
+      requireFile(bin);
+      return { command: "wsl", args: ["-e", toWSLPath(bin), ...args] };
+    }
+
+    case "bundled":
+    default: {
+      if (onWindows) {
+        const bin = bundledBin(opts.binRoot, "linux-amd64");
+        requireFile(bin);
+        return { command: "wsl", args: ["-e", toWSLPath(bin), ...args] };
+      }
+      const bin = bundledBin(opts.binRoot, platformDir(opts.platform, opts.arch));
+      requireFile(bin);
+      return { command: bin, args };
+    }
+  }
 }

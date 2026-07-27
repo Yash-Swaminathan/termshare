@@ -134,7 +134,9 @@
     }
 
     term.onData((d) => {
-      if (canWrite && ws && ws.readyState === WebSocket.OPEN) ws.send(d);
+      // Send keystrokes as a binary frame; the server treats text frames as
+      // JSON control messages and only binary frames as pty input.
+      if (canWrite && ws && ws.readyState === WebSocket.OPEN) ws.send(new TextEncoder().encode(d));
     });
 
     function sendResize() {

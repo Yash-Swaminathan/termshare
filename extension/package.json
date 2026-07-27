@@ -24,15 +24,44 @@
       {
         "command": "termshare.stopShare",
         "title": "termshare: Stop Share"
+      },
+      {
+        "command": "termshare.toggleShare",
+        "title": "termshare: Toggle Share"
       }
     ],
     "configuration": {
       "title": "termshare",
       "properties": {
+        "termshare.launchMode": {
+          "type": "string",
+          "enum": [
+            "bundled",
+            "path",
+            "wsl"
+          ],
+          "default": "bundled",
+          "markdownEnumDescriptions": [
+            "Run the binary bundled with the extension (`bin/<platform-arch>/termshare`). On Windows this runs the Linux binary through WSL.",
+            "Run the binary at `termshare.path` (or `termshare` on `PATH`). On Windows it is still run through WSL.",
+            "Force running through `wsl`, using `termshare.path` if set, otherwise the bundled `linux-amd64` binary."
+          ],
+          "markdownDescription": "How to launch the termshare server. The PTY backend is Unix-only, so on Windows the binary always runs through WSL."
+        },
         "termshare.path": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Path to the `termshare` binary. Leave empty to auto-resolve: on Windows the bundled `dist/termshare-linux-amd64` (run via WSL) if present, otherwise `termshare` on PATH."
+          "markdownDescription": "Path to the `termshare` binary. Used when `termshare.launchMode` is `path`, or as an override for `wsl`. Leave empty to fall back to `termshare` on `PATH` (or the bundled binary for `wsl`)."
+        },
+        "termshare.addr": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Listen address passed to termshare as `-addr` (e.g. `:8080`). Leave empty to use the termshare default."
+        },
+        "termshare.hostKey": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Fixed host key passed to termshare as `-host-key`. Leave empty for a random key each session."
         }
       }
     }
@@ -43,11 +72,13 @@
     "watch": "node esbuild.js --watch",
     "build-tests": "tsc -p tsconfig.test.json",
     "test": "npm run build-tests && node --test \"out/test/*.test.js\"",
+    "package": "vsce package",
     "vscode:prepublish": "npm run check-types && node esbuild.js --production"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.0.0",
     "esbuild": "^0.23.0",
     "typescript": "^5.5.0"
   }

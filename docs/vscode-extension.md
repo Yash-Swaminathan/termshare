@@ -93,23 +93,35 @@ the Go module).
 Acceptance: F5 (Extension Dev Host) -> Start Share -> viewer link on clipboard,
 host opens in browser, Stop Share kills the process. Manually verified on WSL.
 
-## Phase 2 - Solid extension
+## Phase 2 - Solid extension (implemented)
 
-- Commit 2.1 - `status bar item` - show "termshare: sharing" while active; click
-  toggles start/stop. Reflect state (idle / sharing / error).
-- Commit 2.2 - `bundle per-os binaries` - ship Phase 0 binaries under
-  `extension/bin/<platform>/termshare`; resolve the right one at runtime via
-  `process.platform` / `process.arch`; fall back to the `termshare.command`
-  setting. On Windows, wrap with `wsl`.
-- Commit 2.3 - `settings + error ux` - contribute settings (`termshare.addr`,
-  `termshare.hostKey`, `termshare.launchMode: bundled | path | wsl | remote`).
-  Surface spawn failures (binary missing, port in use, non-Unix host) as clear
-  notifications instead of silent failures.
-- Commit 2.4 (optional) - `host-as-viewer webview` - a webview panel that loads
-  xterm.js and connects to the viewer WS, so the host can watch inside VS Code.
-  Reuse the frontend logic from [`static/index.html`](../static/index.html).
+Scope decisions for this phase: WSL-first (developer runs Windows + WSL), launch
+modes `bundled | path | wsl` (no remote/SSH), and the xterm webview deferred to
+a later phase. The UI is embedded in the Go binary so an installed extension no
+longer depends on a sibling `static/` folder or the process working directory.
 
-Acceptance: package a `.vsix` (`npx @vscode/vsce package`), install via
+- Commit 2.0 - `embed static UI in Go` - `//go:embed static` served via
+  `http.FS`; [`main.go`](../main.go) serves the session page and assets from the
+  embedded FS. Tests assert the embedded UI is served (200 + `xterm` marker).
+- Commit 2.1 - `status bar item` - shows idle / sharing / error and toggles
+  start/stop on click (`termshare.toggleShare`). State text/tooltip come from a
+  pure `statusView` helper so they are unit-tested without the VS Code API.
+- Commit 2.2 - `bundle per-os binaries` - `scripts/build-extension-bins.sh`
+  cross-compiles into `extension/bin/{linux-amd64,linux-arm64,darwin-amd64,darwin-arm64}/termshare`;
+  `resolveSpawn` resolves the right one via `process.platform` / `process.arch`
+  from the extension's `bin/` dir. On Windows the linux-amd64 binary runs via
+  `wsl`. `.vscodeignore` ships `bin/**`; `npm run package` builds the `.vsix`.
+- Commit 2.3 - `settings + error ux` - settings `termshare.launchMode`,
+  `termshare.path`, `termshare.addr`, `termshare.hostKey`. Spawn failures
+  (binary missing, WSL/port errors, timeout) surface as clear notifications and
+  set the status bar to the error state.
+
+Deferred to a later phase: `host-as-viewer webview` - a panel that loads xterm.js
+and connects to the viewer WS so the host can watch inside VS Code. Would reuse
+the frontend logic from [`static/index.html`](../static/index.html).
+
+Acceptance: `go test ./...` and `npm test` pass (unit tests only);
+package a `.vsix` (`npm run package`), install via
 "Install from VSIX", and run start/stop/status without the dev host.
 
 ## Phase 3 - Marketplace-ready

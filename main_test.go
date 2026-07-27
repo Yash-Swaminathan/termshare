@@ -2,11 +2,16 @@ package main
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 func setupHub(t *testing.T) *Session {
@@ -88,6 +93,32 @@ func TestSessionPageKnownID(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("known session page: want 200, got %d", resp.StatusCode)
 	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "xterm") {
+		t.Fatalf("session page should serve the embedded xterm UI, got %q", body)
+	}
+}
+
+func TestStaticRootServesIndex(t *testing.T) {
+	// arrange
+	setupHub(t)
+	srv := httptest.NewServer(newMux())
+	defer srv.Close()
+
+	// act
+	resp, err := http.Get(srv.URL + "/index.html")
+
+	// assert
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("embedded index.html: want 200, got %d", resp.StatusCode)
+	}
 }
 
 func TestSessionPageUnknownID404(t *testing.T) {
@@ -125,6 +156,89 @@ func TestWSUnknownID404(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("unknown ws: want 404, got %d", resp.StatusCode)
+	}
+}
+
+// setupPipeSession registers a session whose pty is a pipe, so tests can read
+// what the server writes to the shell without a real pty (works on Windows).
+func setupPipeSession(t *testing.T) *os.File {
+	t.Helper()
+	pr, pw, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	hub = NewHub()
+	s := &Session{
+		id:         "known123",
+		hostKey:    "secretkey",
+		ptyFile:    pw,
+		clients:    map[*Client]bool{},
+		register:   make(chan *Client),
+		unregister: make(chan *Client),
+		broadcast:  make(chan []byte, 256),
+		setACL:     make(chan bool),
+		done:       make(chan struct{}),
+	}
+	hub.put(s)
+	go s.run()
+	t.Cleanup(func() { pr.Close(); pw.Close() })
+	return pr
+}
+
+func dialHost(t *testing.T, srvURL, path string) *websocket.Conn {
+	t.Helper()
+	wsURL := "ws" + strings.TrimPrefix(srvURL, "http") + path
+	c, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("dial %s: %v", wsURL, err)
+	}
+	t.Cleanup(func() { c.Close() })
+	return c
+}
+
+func TestHostBinaryInputReachesPTY(t *testing.T) {
+	// arrange
+	pr := setupPipeSession(t)
+	srv := httptest.NewServer(newMux())
+	defer srv.Close()
+	c := dialHost(t, srv.URL, "/s/known123/ws?key=secretkey")
+
+	// act: a text frame is control (dropped here), a binary frame is pty input
+	if err := c.WriteMessage(websocket.TextMessage, []byte("echo IGNORED\n")); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.WriteMessage(websocket.BinaryMessage, []byte("echo REAL\n")); err != nil {
+		t.Fatal(err)
+	}
+
+	// assert: only the binary payload is written to the pty
+	got := readWithTimeout(t, pr, len("echo REAL\n"))
+	if got != "echo REAL\n" {
+		t.Fatalf("pty input: want %q, got %q", "echo REAL\n", got)
+	}
+}
+
+func readWithTimeout(t *testing.T, r io.Reader, n int) string {
+	t.Helper()
+	type result struct {
+		s   string
+		err error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		buf := make([]byte, n)
+		_, err := io.ReadFull(r, buf)
+		ch <- result{string(buf), err}
+	}()
+	select {
+	case res := <-ch:
+		if res.err != nil {
+			t.Fatalf("read pty: %v", res.err)
+		}
+		return res.s
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for pty input; typed keystrokes may not be reaching the shell")
+		return ""
 	}
 }
 

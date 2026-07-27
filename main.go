@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io/fs"
 	"log"
 	"net"
 	"net/http"
@@ -55,10 +56,20 @@ func main() {
 // newMux requires hub to be initialized before the handler serves requests.
 func newMux() *http.ServeMux {
 	mux := http.NewServeMux()
-	mux.Handle("/", http.FileServer(http.Dir("static")))
+	mux.Handle("/", http.FileServer(http.FS(staticRoot())))
 	mux.HandleFunc("/s/{id}", serveSessionPage)
 	mux.HandleFunc("/s/{id}/ws", serveWS)
 	return mux
+}
+
+// staticRoot returns the embedded UI rooted at static/ so paths are served as
+// "/index.html" rather than "/static/index.html".
+func staticRoot() fs.FS {
+	sub, err := fs.Sub(staticFS, "static")
+	if err != nil {
+		log.Fatal("static embed:", err)
+	}
+	return sub
 }
 
 func logShareURLs(addr, id, key string) {
@@ -142,7 +153,7 @@ func serveSessionPage(w http.ResponseWriter, req *http.Request) {
 		http.NotFound(w, req)
 		return
 	}
-	http.ServeFile(w, req, "static/index.html")
+	http.ServeFileFS(w, req, staticRoot(), "index.html")
 }
 
 func serveWS(w http.ResponseWriter, req *http.Request) {
