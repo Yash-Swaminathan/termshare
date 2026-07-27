@@ -61,6 +61,22 @@ type" toggle in the UI.
 |------|---------|-------------|
 | `-addr` | `:8080` | HTTP listen address |
 | `-host-key` | random | Key that grants host (write) access; random hex if empty |
+| `-print-json` | off | Print one JSON line to stdout with `viewer`, `host`, and `id` (for tooling / the VS Code extension) |
+
+## Build
+
+```bash
+./scripts/build.sh          # Linux/macOS -> dist/termshare
+# or: pwsh ./scripts/build.ps1   # Windows -> dist/termshare.exe
+```
+
+Cross-compile (cgo not required):
+
+```bash
+GOOS=linux  GOARCH=amd64 go build -o dist/termshare-linux-amd64 .
+GOOS=darwin GOARCH=amd64 go build -o dist/termshare-darwin-amd64 .
+GOOS=darwin GOARCH=arm64 go build -o dist/termshare-darwin-arm64 .
+```
 
 ## Limitations
 
@@ -78,6 +94,7 @@ termshare/
 ├── hub.go            # session registry (id -> Session)
 ├── session.go        # session/room hub: clients, roles, fan-out
 ├── pty.go            # PTY spawning and resize
+├── scripts/          # build helpers for dist/ binaries
 ├── static/
 │   └── index.html    # xterm.js frontend
 └── go.mod

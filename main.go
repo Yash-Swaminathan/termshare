@@ -3,18 +3,22 @@ package main
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"flag"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/gorilla/websocket"
 )
 
 var (
-	addr    = flag.String("addr", ":8080", "http service address")
-	hostKey = flag.String("host-key", "", "key that grants host (write) access; random if empty")
+	addr      = flag.String("addr", ":8080", "http service address")
+	hostKey   = flag.String("host-key", "", "key that grants host (write) access; random if empty")
+	printJSON = flag.Bool("print-json", false, "print one machine-readable share URL line to stdout")
 )
 
 func main() {
@@ -36,6 +40,13 @@ func main() {
 
 	log.Printf("termshare listening on %s", *addr)
 	logShareURLs(*addr, s.id, key)
+	if *printJSON {
+		line, err := shareURLsJSON(*addr, s.id, key)
+		if err != nil {
+			log.Fatal("print-json:", err)
+		}
+		fmt.Fprintln(os.Stdout, line)
+	}
 	if err := http.ListenAndServe(*addr, newMux()); err != nil {
 		log.Fatal("ListenAndServe:", err)
 	}
@@ -62,6 +73,27 @@ func logShareURLs(addr, id, key string) {
 	if ip := detectLANIP(); ip != "" {
 		printPair("lan  ", ip)
 	}
+}
+
+// shareURLsJSON returns one line of machine-readable local share URLs for the
+// VS Code extension (and similar tools) to parse without scraping stderr.
+func shareURLsJSON(addr, id, key string) (string, error) {
+	port := portOf(addr)
+	base := "http://localhost:" + port + "/s/" + id
+	payload := struct {
+		Viewer string `json:"viewer"`
+		Host   string `json:"host"`
+		ID     string `json:"id"`
+	}{
+		Viewer: base,
+		Host:   base + "?key=" + key,
+		ID:     id,
+	}
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }
 
 func portOf(addr string) string {
