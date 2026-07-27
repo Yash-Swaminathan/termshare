@@ -1,0 +1,54 @@
+{
+  "name": "termshare",
+  "displayName": "termshare",
+  "description": "Live-share your terminal from VS Code: start a termshare session, copy the viewer link, open the host in your browser.",
+  "version": "0.1.0",
+  "publisher": "yash-swaminathan",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Yash-Swaminathan/termshare.git"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "termshare.startShare",
+        "title": "termshare: Start Share"
+      },
+      {
+        "command": "termshare.stopShare",
+        "title": "termshare: Stop Share"
+      }
+    ],
+    "configuration": {
+      "title": "termshare",
+      "properties": {
+        "termshare.path": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to the `termshare` binary. Leave empty to auto-resolve: on Windows the bundled `dist/termshare-linux-amd64` (run via WSL) if present, otherwise `termshare` on PATH."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "check-types": "tsc --noEmit",
+    "compile": "npm run check-types && node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "build-tests": "tsc -p tsconfig.test.json",
+    "test": "npm run build-tests && node --test \"out/test/*.test.js\"",
+    "vscode:prepublish": "npm run check-types && node esbuild.js --production"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.23.0",
+    "typescript": "^5.5.0"
+  }
+}
