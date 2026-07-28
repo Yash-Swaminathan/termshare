@@ -126,13 +126,15 @@ package a `.vsix` (`npm run package`), install via
 
 ## Phase 3 - Marketplace-ready
 
-- Commit 3.1 - `extension readme + icon` - marketplace README (GIF reuse from
-  `demo/`), 128px icon, `categories`, `keywords`, `repository`.
+Publisher id: `YashSwaminathan`. Icon: `extension/media/icon.png`.
+
+- Commit 3.1 - `extension readme + icon` - brief marketplace README, 128px icon,
+  `categories`, `keywords`, `repository`, MIT `LICENSE`.
 - Commit 3.2 - `ci packaging` - GitHub Actions: build Go binaries for
-  linux/darwin, run `vsce package`, upload the `.vsix` as an artifact.
-- Commit 3.3 - `publish` - create a Marketplace publisher, authenticate `vsce`
-  (PAT or Entra/OIDC), `vsce publish`. Automated malware/secret scan runs before
-  it goes live; usually quick for a clean package.
+  linux/darwin, run `vsce package`, upload the `.vsix` as an artifact
+  (`.github/workflows/package-extension.yml`).
+- Commit 3.3 - `publish` - Marketplace publisher + `vsce login` + `vsce publish`.
+  Automated malware/secret scan runs before it goes live.
 
 Acceptance: extension installs from Marketplace and Start Share works on a
 clean machine (with a reachable Unix host / WSL).

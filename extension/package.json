@@ -2,17 +2,31 @@
   "name": "termshare",
   "displayName": "termshare",
   "description": "Live-share your terminal from VS Code: start a termshare session, copy the viewer link, open the host in your browser.",
-  "version": "0.1.0",
-  "publisher": "yash-swaminathan",
+  "version": "0.1.1",
+  "publisher": "YashSwaminathan",
+  "license": "MIT",
+  "icon": "media/icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/Yash-Swaminathan/termshare.git"
   },
+  "bugs": {
+    "url": "https://github.com/Yash-Swaminathan/termshare/issues"
+  },
+  "homepage": "https://github.com/Yash-Swaminathan/termshare",
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": [
     "Other"
+  ],
+  "keywords": [
+    "terminal",
+    "live share",
+    "pty",
+    "collaboration",
+    "websocket",
+    "termshare"
   ],
   "main": "./dist/extension.js",
   "contributes": {

@@ -1,0 +1,57 @@
+name: Package extension
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "extension/**"
+      - "scripts/build-extension-bins.sh"
+      - "*.go"
+      - "go.mod"
+      - "go.sum"
+      - "static/**"
+      - ".github/workflows/package-extension.yml"
+  pull_request:
+    paths:
+      - "extension/**"
+      - "scripts/build-extension-bins.sh"
+      - "*.go"
+      - "go.mod"
+      - "go.sum"
+      - "static/**"
+      - ".github/workflows/package-extension.yml"
+  workflow_dispatch:
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: extension/package-lock.json
+
+      - name: Build bundled binaries
+        run: bash scripts/build-extension-bins.sh
+
+      - name: Test Go
+        run: go test ./...
+
+      - name: Package VSIX
+        working-directory: extension
+        run: |
+          npm ci
+          npm test
+          npx vsce package
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: termshare-vsix
+          path: extension/*.vsix

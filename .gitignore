@@ -1,7 +1,10 @@
 termshare_showcase_roadmap_a31a4c94.plan.md
 dist/
+.env
+.env.*
 extension/node_modules/
 extension/dist/
 extension/out/
 extension/bin/
+extension/media/icon-source.png
 extension/*.vsix
