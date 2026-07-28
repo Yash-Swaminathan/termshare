@@ -86,19 +86,31 @@ func logShareURLs(addr, id, key string) {
 	}
 }
 
-// shareURLsJSON returns one line of machine-readable local share URLs for the
+// shareURLsJSON returns one line of machine-readable share URLs for the
 // VS Code extension (and similar tools) to parse without scraping stderr.
+// When a LAN IP is detected, lanViewer/lanHost are included for same-network sharing.
 func shareURLsJSON(addr, id, key string) (string, error) {
+	return shareURLsJSONWithLAN(addr, id, key, detectLANIP())
+}
+
+func shareURLsJSONWithLAN(addr, id, key, lanIP string) (string, error) {
 	port := portOf(addr)
 	base := "http://localhost:" + port + "/s/" + id
 	payload := struct {
-		Viewer string `json:"viewer"`
-		Host   string `json:"host"`
-		ID     string `json:"id"`
+		Viewer    string `json:"viewer"`
+		Host      string `json:"host"`
+		LanViewer string `json:"lanViewer,omitempty"`
+		LanHost   string `json:"lanHost,omitempty"`
+		ID        string `json:"id"`
 	}{
 		Viewer: base,
 		Host:   base + "?key=" + key,
 		ID:     id,
+	}
+	if lanIP != "" {
+		lanBase := "http://" + lanIP + ":" + port + "/s/" + id
+		payload.LanViewer = lanBase
+		payload.LanHost = lanBase + "?key=" + key
 	}
 	b, err := json.Marshal(payload)
 	if err != nil {

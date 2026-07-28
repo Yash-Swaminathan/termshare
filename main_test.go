@@ -23,7 +23,7 @@ func setupHub(t *testing.T) *Session {
 }
 
 func TestShareURLsJSON(t *testing.T) {
-	line, err := shareURLsJSON(":9090", "abc123", "hostsecret")
+	line, err := shareURLsJSONWithLAN(":9090", "abc123", "hostsecret", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,9 +32,11 @@ func TestShareURLsJSON(t *testing.T) {
 	}
 
 	var got struct {
-		Viewer string `json:"viewer"`
-		Host   string `json:"host"`
-		ID     string `json:"id"`
+		Viewer    string `json:"viewer"`
+		Host      string `json:"host"`
+		LanViewer string `json:"lanViewer"`
+		LanHost   string `json:"lanHost"`
+		ID        string `json:"id"`
 	}
 	if err := json.Unmarshal([]byte(line), &got); err != nil {
 		t.Fatalf("unmarshal: %v\nline=%q", err, line)
@@ -51,6 +53,9 @@ func TestShareURLsJSON(t *testing.T) {
 	if got.Host != "http://localhost:9090/s/abc123?key=hostsecret" {
 		t.Fatalf("host: want key query, got %q", got.Host)
 	}
+	if got.LanViewer != "" || got.LanHost != "" {
+		t.Fatalf("want no LAN fields when lanIP empty, got lanViewer=%q lanHost=%q", got.LanViewer, got.LanHost)
+	}
 	u, err := url.Parse(got.Host)
 	if err != nil {
 		t.Fatal(err)
@@ -60,8 +65,32 @@ func TestShareURLsJSON(t *testing.T) {
 	}
 }
 
+func TestShareURLsJSONWithLAN(t *testing.T) {
+	line, err := shareURLsJSONWithLAN(":8080", "sess1", "k", "192.168.1.42")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Viewer    string `json:"viewer"`
+		LanViewer string `json:"lanViewer"`
+		LanHost   string `json:"lanHost"`
+	}
+	if err := json.Unmarshal([]byte(line), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.LanViewer != "http://192.168.1.42:8080/s/sess1" {
+		t.Fatalf("lanViewer: got %q", got.LanViewer)
+	}
+	if got.LanHost != "http://192.168.1.42:8080/s/sess1?key=k" {
+		t.Fatalf("lanHost: got %q", got.LanHost)
+	}
+	if strings.Contains(got.LanViewer, "key=") {
+		t.Fatal("lanViewer must not include key")
+	}
+}
+
 func TestShareURLsJSONDefaultPort(t *testing.T) {
-	line, err := shareURLsJSON("bad-addr", "id1", "k")
+	line, err := shareURLsJSONWithLAN("bad-addr", "id1", "k", "")
 	if err != nil {
 		t.Fatal(err)
 	}

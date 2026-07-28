@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { ShareSession } from "./session";
 import { LaunchMode } from "./launch";
+import { preferredShareLinks } from "./parse";
 import { ShareState, statusView } from "./status";
 
 let session: ShareSession | undefined;
@@ -63,9 +64,13 @@ async function startShare(context: vscode.ExtensionContext): Promise<void> {
     });
 
     setStatus("sharing");
-    await vscode.env.clipboard.writeText(urls.viewer);
-    await vscode.env.openExternal(vscode.Uri.parse(urls.host));
-    vscode.window.showInformationMessage("termshare: sharing started — viewer link copied to clipboard.");
+    const links = preferredShareLinks(urls);
+    await vscode.env.clipboard.writeText(links.viewer);
+    await vscode.env.openExternal(vscode.Uri.parse(links.host));
+    const kind = urls.lanViewer ? "LAN" : "local";
+    vscode.window.showInformationMessage(
+      `termshare: sharing started — ${kind} viewer link copied to clipboard.`
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     setStatus("error", message);
