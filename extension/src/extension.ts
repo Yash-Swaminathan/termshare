@@ -101,7 +101,7 @@ async function startShare(context: vscode.ExtensionContext): Promise<void> {
     await vscode.env.openExternal(vscode.Uri.parse(links.host));
     const kind = urls.lanViewer ? "LAN" : "local";
     vscode.window.showInformationMessage(
-      `termshare: sharing started — ${kind} viewer link copied to clipboard.`
+      `termshare: sharing started — ${kind} viewer link copied; host opened locally.`
     );
   } catch (err) {
     closeLANBridge();

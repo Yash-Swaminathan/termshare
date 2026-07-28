@@ -8,16 +8,24 @@ export function lanIPScore(ip: string): number {
   }
   const a = Number(m[1]);
   const b = Number(m[2]);
+  const d = Number(m[4]);
+  let score = 5;
   if (a === 192 && b === 168) {
-    return 30;
+    score = 30;
+  } else if (a === 10) {
+    score = 20;
+  } else if (a === 172 && b >= 16 && b <= 31) {
+    score = 10;
   }
-  if (a === 10) {
-    return 20;
+  // VirtualBox host-only is rarely the path phones use.
+  if (ip.startsWith("192.168.56.")) {
+    score -= 20;
   }
-  if (a === 172 && b >= 16 && b <= 31) {
-    return 10;
+  // .1 is often the router/gateway, not this machine.
+  if (d === 1) {
+    score -= 8;
   }
-  return 5;
+  return score;
 }
 
 /**
@@ -30,7 +38,7 @@ export function detectHostLANIP(
   let best: string | undefined;
   let bestScore = 0;
   for (const [name, addrs] of Object.entries(interfaces)) {
-    if (!addrs || /loopback|vethernet|hyper-v|docker|wsl/i.test(name)) {
+    if (!addrs || /loopback|vethernet|hyper-v|docker|wsl|virtualbox|vmware|bluetooth/i.test(name)) {
       continue;
     }
     for (const addr of addrs) {
@@ -44,7 +52,9 @@ export function detectHostLANIP(
         continue;
       }
       let score = lanIPScore(addr.address);
-      if (/wi-?fi|wlan|wireless|ethernet|en0|eth0/i.test(name)) {
+      if (/wi-?fi|wlan|wireless/i.test(name)) {
+        score += 15;
+      } else if (/ethernet|en0|eth0/i.test(name)) {
         score += 5;
       }
       if (score > bestScore) {

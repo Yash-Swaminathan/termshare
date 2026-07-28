@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"testing"
+	"time"
 )
 
 func TestRoleMessageHost(t *testing.T) {
@@ -240,5 +241,49 @@ func TestBroadcastCountNotifiesClients(t *testing.T) {
 	json.Unmarshal(msg.data, &got)
 	if got["type"] != "count" {
 		t.Fatalf("want count frame, got %v", got)
+	}
+}
+
+func TestAppendScrollbackTrims(t *testing.T) {
+	s := &Session{scrollbackMax: 8}
+	s.appendScrollback([]byte("hello world"))
+	if string(s.scrollback) != "lo world" {
+		t.Fatalf("want trimmed scrollback %q, got %q", "lo world", s.scrollback)
+	}
+}
+
+func TestRegisterReplaysScrollback(t *testing.T) {
+	s := &Session{
+		clients:       map[*Client]bool{},
+		register:      make(chan *Client),
+		unregister:    make(chan *Client),
+		broadcast:     make(chan []byte, 8),
+		setACL:        make(chan bool),
+		done:          make(chan struct{}),
+		scrollbackMax: 1024,
+	}
+	go s.run()
+	defer s.signalDone()
+
+	s.broadcast <- []byte("prompt$ ")
+	// Let run() consume the broadcast into scrollback.
+	time.Sleep(20 * time.Millisecond)
+
+	c := &Client{send: make(chan outMsg, 8)}
+	if !s.offer(c) {
+		t.Fatal("offer failed")
+	}
+
+	var sawReplay bool
+	deadline := time.After(500 * time.Millisecond)
+	for !sawReplay {
+		select {
+		case msg := <-c.send:
+			if !msg.text && string(msg.data) == "prompt$ " {
+				sawReplay = true
+			}
+		case <-deadline:
+			t.Fatal("timed out waiting for scrollback replay")
+		}
 	}
 }

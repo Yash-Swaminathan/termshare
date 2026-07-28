@@ -8,17 +8,16 @@ test("lanIPScore prefers 192.168 over 10 and 172", () => {
   assert.equal(lanIPScore("not-an-ip"), 0);
 });
 
-test("detectHostLANIP skips loopback and WSL vEthernet names", () => {
+test("detectHostLANIP prefers Wi-Fi over VirtualBox and gateway .1", () => {
   const got = detectHostLANIP({
-    Loopback: [{ address: "127.0.0.1", netmask: "255.0.0.0", family: "IPv4", mac: "", internal: true, cidr: null }],
     "vEthernet (WSL)": [
       { address: "172.17.144.1", netmask: "255.255.240.0", family: "IPv4", mac: "", internal: false, cidr: null }
     ],
+    "Ethernet 2": [
+      { address: "192.168.56.1", netmask: "255.255.255.0", family: "IPv4", mac: "", internal: false, cidr: null }
+    ],
     "Wi-Fi": [
       { address: "192.168.86.100", netmask: "255.255.255.0", family: "IPv4", mac: "", internal: false, cidr: null }
-    ],
-    "Ethernet": [
-      { address: "192.168.56.1", netmask: "255.255.255.0", family: "IPv4", mac: "", internal: false, cidr: null }
     ]
   });
   assert.equal(got, "192.168.86.100");

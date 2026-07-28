@@ -6,11 +6,11 @@ export interface ShareURLs {
   lanHost?: string;
 }
 
-/** Prefer LAN links when present so clipboard/browser work on the same Wi-Fi. */
+/** Prefer LAN viewer for sharing; keep host on localhost for a reliable local browser. */
 export function preferredShareLinks(urls: ShareURLs): { viewer: string; host: string } {
   return {
     viewer: urls.lanViewer || urls.viewer,
-    host: urls.lanHost || urls.host
+    host: urls.host
   };
 }
 

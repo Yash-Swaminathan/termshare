@@ -132,6 +132,10 @@ type Session struct {
 	hostKey         string
 	viewersCanWrite bool
 
+	// scrollback retains recent pty output so late joiners see current state.
+	scrollback    []byte
+	scrollbackMax int
+
 	// remove unregisters this session from the hub during shutdown.
 	remove func()
 
@@ -154,16 +158,17 @@ func NewSession(id, hostKey string) (*Session, error) {
 		return nil, err
 	}
 	s := &Session{
-		id:         id,
-		ptyFile:    f,
-		cmd:        cmd,
-		clients:    map[*Client]bool{},
-		register:   make(chan *Client),
-		unregister: make(chan *Client),
-		broadcast:  make(chan []byte, 256),
-		setACL:     make(chan bool),
-		done:       make(chan struct{}),
-		hostKey:    hostKey,
+		id:            id,
+		ptyFile:       f,
+		cmd:           cmd,
+		clients:       map[*Client]bool{},
+		register:      make(chan *Client),
+		unregister:    make(chan *Client),
+		broadcast:     make(chan []byte, 256),
+		setACL:        make(chan bool),
+		done:          make(chan struct{}),
+		hostKey:       hostKey,
+		scrollbackMax: 256 * 1024,
 	}
 	s.resizePTY = func(cols, rows uint16) error {
 		return SetPTYSize(s.ptyFile, cols, rows)
@@ -180,6 +185,11 @@ func (s *Session) run() {
 				c.canWrite.Store(s.viewersCanWrite)
 			}
 			c.trySend(c.roleMessage(s.viewersCanWrite))
+			if len(s.scrollback) > 0 {
+				replay := make([]byte, len(s.scrollback))
+				copy(replay, s.scrollback)
+				c.trySend(outMsg{data: replay})
+			}
 			s.broadcastCount()
 		case c := <-s.unregister:
 			s.drop(c)
@@ -193,6 +203,7 @@ func (s *Session) run() {
 				c.trySend(c.roleMessage(vw))
 			}
 		case b := <-s.broadcast:
+			s.appendScrollback(b)
 			for c := range s.clients {
 				// Drop slow clients inline; unregister would deadlock here.
 				if !c.trySend(outMsg{data: b}) {
@@ -213,6 +224,17 @@ func (s *Session) offer(c *Client) bool {
 		return true
 	case <-s.done:
 		return false
+	}
+}
+
+// appendScrollback keeps the last scrollbackMax bytes of pty output.
+func (s *Session) appendScrollback(b []byte) {
+	if s.scrollbackMax <= 0 || len(b) == 0 {
+		return
+	}
+	s.scrollback = append(s.scrollback, b...)
+	if len(s.scrollback) > s.scrollbackMax {
+		s.scrollback = s.scrollback[len(s.scrollback)-s.scrollbackMax:]
 	}
 }
 

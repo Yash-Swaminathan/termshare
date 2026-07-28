@@ -28,7 +28,7 @@ test("parses optional LAN fields", () => {
   assert.equal(got.lanHost, "http://192.168.1.10:8080/s/abc?key=secret");
 });
 
-test("preferredShareLinks uses LAN when present", () => {
+test("preferredShareLinks uses LAN viewer but keeps local host", () => {
   const links = preferredShareLinks({
     viewer: "http://localhost:8080/s/abc",
     host: "http://localhost:8080/s/abc?key=secret",
@@ -37,7 +37,7 @@ test("preferredShareLinks uses LAN when present", () => {
     id: "abc"
   });
   assert.equal(links.viewer, "http://192.168.1.10:8080/s/abc");
-  assert.equal(links.host, "http://192.168.1.10:8080/s/abc?key=secret");
+  assert.equal(links.host, "http://localhost:8080/s/abc?key=secret");
 });
 
 test("preferredShareLinks falls back to local", () => {
