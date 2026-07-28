@@ -17,6 +17,8 @@ export interface ResolveOptions {
   binRoot: string;
   addr?: string;
   hostKey?: string;
+  /** Override LAN IP advertised in -print-json (needed on Windows/WSL). */
+  lanIP?: string;
   extraArgs?: string[];
 }
 
@@ -58,6 +60,9 @@ function runArgs(opts: ResolveOptions): string[] {
   }
   if (opts.hostKey && opts.hostKey.trim() !== "") {
     args.push("-host-key", opts.hostKey.trim());
+  }
+  if (opts.lanIP && opts.lanIP.trim() !== "") {
+    args.push("-lan-ip", opts.lanIP.trim());
   }
   return [...args, ...(opts.extraArgs ?? [])];
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -86,6 +87,28 @@ func TestShareURLsJSONWithLAN(t *testing.T) {
 	}
 	if strings.Contains(got.LanViewer, "key=") {
 		t.Fatal("lanViewer must not include key")
+	}
+}
+
+func TestLanIPScore(t *testing.T) {
+	if lanIPScore(net.ParseIP("192.168.1.5").To4()) <= lanIPScore(net.ParseIP("10.0.0.5").To4()) {
+		t.Fatal("want 192.168 scored higher than 10/8")
+	}
+	if lanIPScore(net.ParseIP("10.0.0.5").To4()) <= lanIPScore(net.ParseIP("172.17.0.5").To4()) {
+		t.Fatal("want 10/8 scored higher than 172.16/12")
+	}
+}
+
+func TestResolveLANIPOverride(t *testing.T) {
+	if got := resolveLANIP("192.168.86.100"); got != "192.168.86.100" {
+		t.Fatalf("override: got %q", got)
+	}
+}
+
+func TestDetectLANIPSkipsLoopbackAlias(t *testing.T) {
+	ip := detectLANIP()
+	if ip == "10.255.255.254" || ip == "127.0.0.1" {
+		t.Fatalf("detectLANIP returned unusable address %q", ip)
 	}
 }
 

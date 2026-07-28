@@ -80,10 +80,20 @@ test("wsl mode falls back to the bundled linux-amd64 binary", () => {
   assert.equal(plan.args[1], toWSLPath(path.join(binRoot, "linux-amd64", "termshare")));
 });
 
-test("addr and hostKey are threaded through as flags", () => {
+test("addr hostKey and lanIP are threaded through as flags", () => {
   const binRoot = makeBinRoot(["linux-amd64"]);
-  const plan = resolveSpawn(opts({ binRoot, addr: ":9000", hostKey: "abc" }));
-  assert.deepEqual(plan.args, ["-print-json", "-addr", ":9000", "-host-key", "abc"]);
+  const plan = resolveSpawn(
+    opts({ binRoot, addr: ":9000", hostKey: "abc", lanIP: "192.168.1.5" })
+  );
+  assert.deepEqual(plan.args, [
+    "-print-json",
+    "-addr",
+    ":9000",
+    "-host-key",
+    "abc",
+    "-lan-ip",
+    "192.168.1.5"
+  ]);
 });
 
 test("platformDir maps os and arch", () => {

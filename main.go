@@ -19,6 +19,7 @@ import (
 var (
 	addr      = flag.String("addr", ":8080", "http service address")
 	hostKey   = flag.String("host-key", "", "key that grants host (write) access; random if empty")
+	lanIPFlag = flag.String("lan-ip", "", "LAN IP for share URLs (overrides auto-detect; useful under WSL)")
 	printJSON = flag.Bool("print-json", false, "print one machine-readable share URL line to stdout")
 )
 
@@ -40,9 +41,10 @@ func main() {
 	go s.waitShell()
 
 	log.Printf("termshare listening on %s", *addr)
-	logShareURLs(*addr, s.id, key)
+	lanIP := resolveLANIP(*lanIPFlag)
+	logShareURLs(*addr, s.id, key, lanIP)
 	if *printJSON {
-		line, err := shareURLsJSON(*addr, s.id, key)
+		line, err := shareURLsJSONWithLAN(*addr, s.id, key, lanIP)
 		if err != nil {
 			log.Fatal("print-json:", err)
 		}
@@ -72,7 +74,7 @@ func staticRoot() fs.FS {
 	return sub
 }
 
-func logShareURLs(addr, id, key string) {
+func logShareURLs(addr, id, key, lanIP string) {
 	port := portOf(addr)
 	log.Printf("session  %s", id)
 	printPair := func(label, host string) {
@@ -81,16 +83,16 @@ func logShareURLs(addr, id, key string) {
 		log.Printf("%s host    %s?key=%s", label, base, key)
 	}
 	printPair("local", "localhost")
-	if ip := detectLANIP(); ip != "" {
-		printPair("lan  ", ip)
+	if lanIP != "" {
+		printPair("lan  ", lanIP)
 	}
 }
 
 // shareURLsJSON returns one line of machine-readable share URLs for the
 // VS Code extension (and similar tools) to parse without scraping stderr.
-// When a LAN IP is detected, lanViewer/lanHost are included for same-network sharing.
+// When a LAN IP is available, lanViewer/lanHost are included for same-network sharing.
 func shareURLsJSON(addr, id, key string) (string, error) {
-	return shareURLsJSONWithLAN(addr, id, key, detectLANIP())
+	return shareURLsJSONWithLAN(addr, id, key, resolveLANIP(""))
 }
 
 func shareURLsJSONWithLAN(addr, id, key, lanIP string) (string, error) {
@@ -126,22 +128,64 @@ func portOf(addr string) string {
 	return "8080"
 }
 
+func resolveLANIP(override string) string {
+	if override != "" {
+		return override
+	}
+	return detectLANIP()
+}
+
+// detectLANIP picks a usable IPv4 for same-Wi-Fi share links.
+// Skips loopback interfaces and link-local addresses so WSL aliases like
+// 10.255.255.254 on lo are not advertised.
 func detectLANIP() string {
-	addrs, err := net.InterfaceAddrs()
+	ifaces, err := net.Interfaces()
 	if err != nil {
 		return ""
 	}
-	for _, a := range addrs {
-		ipNet, ok := a.(*net.IPNet)
-		if !ok || ipNet.IP.IsLoopback() {
+	var best string
+	bestScore := 0
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagLoopback != 0 || iface.Flags&net.FlagUp == 0 {
 			continue
 		}
-		ip4 := ipNet.IP.To4()
-		if ip4 != nil {
-			return ip4.String()
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range addrs {
+			ipNet, ok := a.(*net.IPNet)
+			if !ok {
+				continue
+			}
+			ip4 := ipNet.IP.To4()
+			if ip4 == nil || ip4.IsLoopback() || ip4.IsLinkLocalUnicast() {
+				continue
+			}
+			score := lanIPScore(ip4)
+			if score > bestScore {
+				bestScore = score
+				best = ip4.String()
+			}
 		}
 	}
-	return ""
+	return best
+}
+
+// lanIPScore ranks candidates: prefer typical home/office Wi-Fi (192.168/16),
+// then other RFC1918, then anything else unicast.
+func lanIPScore(ip net.IP) int {
+	if ip[0] == 192 && ip[1] == 168 {
+		return 30
+	}
+	if ip[0] == 10 {
+		return 20
+	}
+	if ip[0] == 172 && ip[1] >= 16 && ip[1] <= 31 {
+		// WSL/Hyper-V often lands here; usable on Linux/macOS LAN, weaker on WSL.
+		return 10
+	}
+	return 5
 }
 
 func randomKey() string {
