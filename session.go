@@ -52,7 +52,7 @@ func countMessage(n int) outMsg {
 	return outMsg{text: true, data: data}
 }
 
-func (c *Client) roleMessage(viewersCanWrite bool) outMsg {
+func (c *Client) roleMessage(viewersCanWrite bool, shareURL string) outMsg {
 	role := "viewer"
 	if c.isHost {
 		role = "host"
@@ -62,7 +62,8 @@ func (c *Client) roleMessage(viewersCanWrite bool) outMsg {
 		Role            string `json:"role"`
 		CanWrite        bool   `json:"canWrite"`
 		ViewersCanWrite bool   `json:"viewersCanWrite"`
-	}{"role", role, c.canWrite.Load(), viewersCanWrite})
+		ShareURL        string `json:"shareURL,omitempty"`
+	}{"role", role, c.canWrite.Load(), viewersCanWrite, shareURL})
 	return outMsg{text: true, data: data}
 }
 
@@ -132,6 +133,9 @@ type Session struct {
 	hostKey         string
 	viewersCanWrite bool
 
+	// shareViewer is the preferred viewer URL for "Copy link" (LAN when known).
+	shareViewer string
+
 	// scrollback retains recent pty output so late joiners see current state.
 	scrollback    []byte
 	scrollbackMax int
@@ -184,7 +188,7 @@ func (s *Session) run() {
 			if !c.isHost {
 				c.canWrite.Store(s.viewersCanWrite)
 			}
-			c.trySend(c.roleMessage(s.viewersCanWrite))
+			c.trySend(c.roleMessage(s.viewersCanWrite, s.shareViewer))
 			if len(s.scrollback) > 0 {
 				replay := make([]byte, len(s.scrollback))
 				copy(replay, s.scrollback)
@@ -200,7 +204,7 @@ func (s *Session) run() {
 				if !c.isHost {
 					c.canWrite.Store(vw)
 				}
-				c.trySend(c.roleMessage(vw))
+				c.trySend(c.roleMessage(vw, s.shareViewer))
 			}
 		case b := <-s.broadcast:
 			s.appendScrollback(b)

@@ -42,6 +42,7 @@ func main() {
 
 	log.Printf("termshare listening on %s", *addr)
 	lanIP := resolveLANIP(*lanIPFlag)
+	s.shareViewer = preferredViewerURL(*addr, s.id, lanIP)
 	logShareURLs(*addr, s.id, key, lanIP)
 	if *printJSON {
 		line, err := shareURLsJSONWithLAN(*addr, s.id, key, lanIP)
@@ -91,6 +92,17 @@ func logShareURLs(addr, id, key, lanIP string) {
 // shareURLsJSON returns one line of machine-readable share URLs for the
 // VS Code extension (and similar tools) to parse without scraping stderr.
 // When a LAN IP is available, lanViewer/lanHost are included for same-network sharing.
+// preferredViewerURL is the link "Copy link" should share: LAN when available,
+// otherwise localhost (same machine only).
+func preferredViewerURL(addr, id, lanIP string) string {
+	port := portOf(addr)
+	host := "localhost"
+	if lanIP != "" {
+		host = lanIP
+	}
+	return "http://" + host + ":" + port + "/s/" + id
+}
+
 func shareURLsJSON(addr, id, key string) (string, error) {
 	return shareURLsJSONWithLAN(addr, id, key, resolveLANIP(""))
 }

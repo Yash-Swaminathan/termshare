@@ -12,7 +12,7 @@ func TestRoleMessageHost(t *testing.T) {
 	c.canWrite.Store(true)
 
 	// act
-	msg := c.roleMessage(false)
+	msg := c.roleMessage(false, "http://192.168.1.5:8080/s/abc")
 	var got map[string]any
 	json.Unmarshal(msg.data, &got)
 
@@ -23,6 +23,9 @@ func TestRoleMessageHost(t *testing.T) {
 	if got["role"] != "host" || got["canWrite"] != true {
 		t.Fatalf("want host/canWrite=true, got %v", got)
 	}
+	if got["shareURL"] != "http://192.168.1.5:8080/s/abc" {
+		t.Fatalf("shareURL: got %v", got["shareURL"])
+	}
 }
 
 func TestRoleMessageViewer(t *testing.T) {
@@ -30,13 +33,16 @@ func TestRoleMessageViewer(t *testing.T) {
 	c := &Client{isHost: false}
 
 	// act
-	msg := c.roleMessage(false)
+	msg := c.roleMessage(false, "")
 	var got map[string]any
 	json.Unmarshal(msg.data, &got)
 
 	// assert
 	if got["role"] != "viewer" || got["canWrite"] != false {
 		t.Fatalf("want viewer/canWrite=false, got %v", got)
+	}
+	if _, ok := got["shareURL"]; ok {
+		t.Fatalf("empty shareURL should be omitted, got %v", got["shareURL"])
 	}
 }
 

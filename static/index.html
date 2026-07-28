@@ -52,6 +52,8 @@
     let isHost = false;
     let canWrite = false;
     let viewersCanWrite = false;
+    // Preferred viewer URL for Copy link (LAN when the server knows one).
+    let shareURL = sessionId ? (location.origin + '/s/' + sessionId) : '';
 
     const key = new URLSearchParams(location.search).get('key');
     const sessionMatch = location.pathname.match(/^\/s\/([^/]+)/);
@@ -87,6 +89,9 @@
         isHost = msg.role === 'host';
         canWrite = !!msg.canWrite;
         viewersCanWrite = !!msg.viewersCanWrite;
+        if (typeof msg.shareURL === 'string' && msg.shareURL) {
+          shareURL = msg.shareURL;
+        }
         render();
         sendResize();
       } else if (msg.type === 'exit') {
@@ -125,7 +130,8 @@
     if (sessionId) {
       copy.addEventListener('click', async () => {
         // Share the viewer link only; never leak the host key.
-        await navigator.clipboard.writeText(location.origin + '/s/' + sessionId);
+        // Prefer the server-provided LAN URL when available.
+        await navigator.clipboard.writeText(shareURL || (location.origin + '/s/' + sessionId));
         copy.textContent = 'Copied!';
         setTimeout(() => { copy.textContent = 'Copy link'; }, 1200);
       });

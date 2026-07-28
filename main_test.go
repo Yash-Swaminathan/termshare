@@ -112,6 +112,20 @@ func TestDetectLANIPSkipsLoopbackAlias(t *testing.T) {
 	}
 }
 
+func TestPreferredViewerURLUsesLAN(t *testing.T) {
+	got := preferredViewerURL(":8080", "abc", "192.168.1.42")
+	if got != "http://192.168.1.42:8080/s/abc" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestPreferredViewerURLFallsBackToLocalhost(t *testing.T) {
+	got := preferredViewerURL(":9090", "abc", "")
+	if got != "http://localhost:9090/s/abc" {
+		t.Fatalf("got %q", got)
+	}
+}
+
 func TestShareURLsJSONDefaultPort(t *testing.T) {
 	line, err := shareURLsJSONWithLAN("bad-addr", "id1", "k", "")
 	if err != nil {
